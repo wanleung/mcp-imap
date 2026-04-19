@@ -84,8 +84,7 @@ class AccountLockManager:
             lock = self._locks.get(account_id)
             if lock is None:
                 return
-            has_waiters = bool(getattr(lock, "_waiters", None))
-            if lock.locked() or has_waiters:
+            if lock.locked():
                 raise RuntimeError(
                     f"Cannot remove lock for account '{account_id}' while it is in use."
                 )
