@@ -7,7 +7,7 @@ allowing different accounts to sync concurrently.
 """
 
 import asyncio
-from typing import Dict
+from typing import Dict, Optional
 
 
 class AccountLockManager:
@@ -29,7 +29,13 @@ class AccountLockManager:
     def __init__(self) -> None:
         """Initialize the lock manager with an empty lock dictionary."""
         self._locks: Dict[str, asyncio.Lock] = {}
-        self._creation_lock = asyncio.Lock()
+        self._creation_lock: Optional[asyncio.Lock] = None
+
+    def _get_creation_lock(self) -> asyncio.Lock:
+        """Get or initialize the lock used to guard lock creation/removal."""
+        if self._creation_lock is None:
+            self._creation_lock = asyncio.Lock()
+        return self._creation_lock
 
     async def get_lock(self, account_id: str) -> asyncio.Lock:
         """Get or create the asyncio.Lock for the given account_id.
@@ -45,7 +51,7 @@ class AccountLockManager:
         Returns:
             The asyncio.Lock instance associated with the given account_id.
         """
-        async with self._creation_lock:
+        async with self._get_creation_lock():
             lock = self._locks.get(account_id)
             if lock is None:
                 lock = asyncio.Lock()
@@ -80,7 +86,7 @@ class AccountLockManager:
         Raises:
             RuntimeError: If the lock exists and is currently acquired.
         """
-        async with self._creation_lock:
+        async with self._get_creation_lock():
             lock = self._locks.get(account_id)
             if lock is None:
                 return
