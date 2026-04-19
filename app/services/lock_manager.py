@@ -7,7 +7,6 @@ allowing different accounts to sync concurrently.
 """
 
 import asyncio
-from threading import Lock
 from typing import Dict
 
 
@@ -21,7 +20,7 @@ class AccountLockManager:
 
     Usage:
         lock_manager = AccountLockManager()
-        lock = lock_manager.get_lock("user@example.com")
+        lock = await lock_manager.get_lock("user@example.com")
         async with lock:
             # perform sync operation
             ...
@@ -30,9 +29,9 @@ class AccountLockManager:
     def __init__(self) -> None:
         """Initialize the lock manager with an empty lock dictionary."""
         self._locks: Dict[str, asyncio.Lock] = {}
-        self._creation_lock = Lock()
+        self._creation_lock = asyncio.Lock()
 
-    def get_lock(self, account_id: str) -> asyncio.Lock:
+    async def get_lock(self, account_id: str) -> asyncio.Lock:
         """Get or create the asyncio.Lock for the given account_id.
 
         If no lock exists for the account_id, a new asyncio.Lock is
@@ -46,11 +45,7 @@ class AccountLockManager:
         Returns:
             The asyncio.Lock instance associated with the given account_id.
         """
-        lock = self._locks.get(account_id)
-        if lock is not None:
-            return lock
-
-        with self._creation_lock:
+        async with self._creation_lock:
             lock = self._locks.get(account_id)
             if lock is None:
                 lock = asyncio.Lock()
@@ -72,7 +67,7 @@ class AccountLockManager:
             return False
         return lock.locked()
 
-    def remove_lock(self, account_id: str) -> None:
+    async def remove_lock(self, account_id: str) -> None:
         """Remove the lock entry for a given account.
 
         This is useful for cleanup when an account is deleted or
@@ -85,13 +80,14 @@ class AccountLockManager:
         Raises:
             RuntimeError: If the lock exists and is currently acquired.
         """
-        with self._creation_lock:
+        async with self._creation_lock:
             lock = self._locks.get(account_id)
             if lock is None:
                 return
-            if lock.locked():
+            has_waiters = bool(getattr(lock, "_waiters", None))
+            if lock.locked() or has_waiters:
                 raise RuntimeError(
-                    f"Cannot remove lock for account '{account_id}' while it is acquired."
+                    f"Cannot remove lock for account '{account_id}' while it is in use."
                 )
             self._locks.pop(account_id, None)
 
