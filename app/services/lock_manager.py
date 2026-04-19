@@ -7,6 +7,7 @@ allowing different accounts to sync concurrently.
 """
 
 import asyncio
+from threading import Lock
 from typing import Dict
 
 
@@ -29,6 +30,7 @@ class AccountLockManager:
     def __init__(self) -> None:
         """Initialize the lock manager with an empty lock dictionary."""
         self._locks: Dict[str, asyncio.Lock] = {}
+        self._creation_lock = Lock()
 
     def get_lock(self, account_id: str) -> asyncio.Lock:
         """Get or create the asyncio.Lock for the given account_id.
@@ -44,9 +46,16 @@ class AccountLockManager:
         Returns:
             The asyncio.Lock instance associated with the given account_id.
         """
-        if account_id not in self._locks:
-            self._locks[account_id] = asyncio.Lock()
-        return self._locks[account_id]
+        lock = self._locks.get(account_id)
+        if lock is not None:
+            return lock
+
+        with self._creation_lock:
+            lock = self._locks.get(account_id)
+            if lock is None:
+                lock = asyncio.Lock()
+                self._locks[account_id] = lock
+            return lock
 
     def is_locked(self, account_id: str) -> bool:
         """Check whether the lock for a given account is currently held.
@@ -72,8 +81,19 @@ class AccountLockManager:
         Args:
             account_id: The unique identifier for the account whose
                 lock entry should be removed.
+
+        Raises:
+            RuntimeError: If the lock exists and is currently acquired.
         """
-        self._locks.pop(account_id, None)
+        with self._creation_lock:
+            lock = self._locks.get(account_id)
+            if lock is None:
+                return
+            if lock.locked():
+                raise RuntimeError(
+                    f"Cannot remove lock for account '{account_id}' while it is acquired."
+                )
+            self._locks.pop(account_id, None)
 
     @property
     def active_locks(self) -> int:

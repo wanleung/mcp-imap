@@ -109,15 +109,3 @@ class HealthService:
             db=db_status,
             imap_pool=imap_status,
         )
-
-**Summary of implementation decisions:**
-
-1. **`HealthResponse` schema** — A simple Pydantic model matching the spec's `{"status", "db", "imap_pool"}` shape, ready to use as a FastAPI `response_model`.
-
-2. **`HealthService`** — Accepts a `session_factory` (callable returning an `AsyncSession`) and an optional `imap_pool` via dependency injection, making it testable and decoupled.
-
-3. **DB check** — Executes `SELECT 1` inside an async context-managed session; catches any exception and returns `"disconnected"`.
-
-4. **IMAP pool check** — Supports both property-style (`pool.is_available`) and method-style (`pool.is_available()`) interfaces on the pool object, since the pool implementation isn't specified. Returns `"unavailable"` if the pool is `None` or raises.
-
-5. **Aggregated `check()`** — Returns `"healthy"` only when both components are up; otherwise `"unhealthy"`, matching the spec's expected output.
